@@ -1,4 +1,4 @@
-# !/usr/bin/env python3
+#!/usr/bin/env python3
 
 import rospy
 import zed_interfaces.msg._ObjectsStamped
