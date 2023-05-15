@@ -52,19 +52,20 @@ class ObstacleAvoidance:
                 velocity_obstacle = VelocityObstacle()
                 global obstacles_vis
 
-                obstacle.position[0] = object.objects[i].position[0]
-                obstacle.position[1] = object.objects[i].position[1]
+                #Convert to Cm
+                obstacle.position[0] = object.objects[i].position[0] * 100
+                obstacle.position[1] = object.objects[i].position[1] * 100
 
                 obstacles_vis.append(obstacle)
 
-                obstacle.velocity[0] = object.objects[i].velocity[0]
-                obstacle.velocity[1] = object.objects[i].velocity[1]
+                obstacle.velocity[0] = object.objects[i].velocity[0] * 100
+                obstacle.velocity[1] = object.objects[i].velocity[1] * 100
 
                 velocity_obstacle.getBoundLeft(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
                 velocity_obstacle.getBoundRight(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
                 velocity_obstacle.getTranslationalVelocity(self.robot.position, obstacle.velocity)
 
-                if(velocity_obstacle.euclidean_distance < 1.5):
+                if(velocity_obstacle.euclidean_distance < 150):
                     msg_obj = Bool()
                     msg_obj.data = True
                     self.obstacle_detected_pub.publish(msg_obj)
@@ -100,8 +101,8 @@ class ObstacleAvoidance:
             print("================VELOCITY OUTPUT=================")
 
     def robot_pose_callback(self, robot):
-        self.robot.position[0] = robot.pose.position.x
-        self.robot.position[1] = robot.pose.position.y
+        self.robot.position[0] = robot.pose.position.x * 100
+        self.robot.position[1] = robot.pose.position.y * 100
 
     def pure_pursuit_callback(self, msg):
         self.robot.velocity[0] = msg.linear.x
