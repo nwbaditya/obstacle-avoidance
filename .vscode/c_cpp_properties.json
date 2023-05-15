@@ -1,0 +1,43 @@
+{
+  "configurations": [
+    {
+      "browse": {
+        "databaseFilename": "${default}",
+        "limitSymbolsToIncludedHeaders": false
+      },
+      "includePath": [
+        "/home/asr-its/slam_ws/devel/include/**",
+        "/home/asr-its/robot_ws/devel/include/**",
+        "/opt/ros/noetic/include/**",
+        "/home/asr-its/slam_ws/src/navigation/amcl/include/**",
+        "/home/asr-its/robot_ws/src/asr_its/include/**",
+        "/home/asr-its/slam_ws/src/navigation/base_local_planner/include/**",
+        "/home/asr-its/slam_ws/src/navigation/carrot_planner/include/**",
+        "/home/asr-its/slam_ws/src/navigation/clear_costmap_recovery/include/**",
+        "/home/asr-its/slam_ws/src/navigation/costmap_2d/include/**",
+        "/home/asr-its/slam_ws/src/navigation/dwa_local_planner/include/**",
+        "/home/asr-its/slam_ws/src/navigation/global_planner/include/**",
+        "/home/asr-its/slam_ws/src/hector_slam/hector_geotiff/include/**",
+        "/home/asr-its/slam_ws/src/hector_slam/hector_map_tools/include/**",
+        "/home/asr-its/slam_ws/src/hector_slam/hector_mapping/include/**",
+        "/home/asr-its/slam_ws/src/hector_slam/hector_marker_drawing/include/**",
+        "/home/asr-its/slam_ws/src/navigation/map_server/include/**",
+        "/home/asr-its/slam_ws/src/navigation/move_base/include/**",
+        "/home/asr-its/slam_ws/src/navigation/move_slow_and_clear/include/**",
+        "/home/asr-its/slam_ws/src/navigation/nav_core/include/**",
+        "/home/asr-its/slam_ws/src/navigation/navfn/include/**",
+        "/home/asr-its/slam_ws/src/perception/include/**",
+        "/home/asr-its/slam_ws/src/navigation/rotate_recovery/include/**",
+        "/home/asr-its/slam_ws/src/navigation/voxel_grid/include/**",
+        "/home/asr-its/slam_ws/src/zed-ros-wrapper/zed-ros-interfaces/include/**",
+        "/usr/include/**"
+      ],
+      "name": "ROS",
+      "intelliSenseMode": "gcc-x64",
+      "compilerPath": "/usr/bin/gcc",
+      "cStandard": "gnu11",
+      "cppStandard": "c++14"
+    }
+  ],
+  "version": 4
+}

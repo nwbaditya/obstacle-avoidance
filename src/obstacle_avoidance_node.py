@@ -30,7 +30,7 @@ class ObstacleAvoidance:
         self.robot = Robot(ROBOT_RADIUS)
 
         self.obstacle_detected_pub = rospy.Publisher("/obstacle_detected",Bool, queue_size=1)
-        self.ov_velocity_pub = rospy.Publisher("/ov_velocity", Twist)
+        self.ov_velocity_pub = rospy.Publisher("/obs_vel", Twist, queue_size=1)
 
         rospy.Subscriber("/zed2i/zed_node/obj_det/objects", zed_interfaces.msg.ObjectsStamped, self.zed_od_callback)
         rospy.Subscriber("/zed2i/zed_node/pose", geometry_msgs.msg.PoseStamped, self.robot_pose_callback)
@@ -44,7 +44,7 @@ class ObstacleAvoidance:
             print("No Object Detected")
             msg_obj = Bool()
             msg_obj.data = False
-            self.obstacle_detected_pub(msg_obj)
+            self.obstacle_detected_pub.publish(msg_obj)
             return
         else:
             for i in range(len(object.objects)):
@@ -67,8 +67,11 @@ class ObstacleAvoidance:
                 if(velocity_obstacle.euclidean_distance < 1.5):
                     msg_obj = Bool()
                     msg_obj.data = True
-                    self.obstacle_detected_pub(msg_obj)
+                    self.obstacle_detected_pub.publish(msg_obj)
                 else:
+                    msg_obj = Bool()
+                    msg_obj.data = False
+                    self.obstacle_detected_pub.publish(msg_obj)
                     return
 
 
@@ -91,7 +94,7 @@ class ObstacleAvoidance:
             msg_vel.linear.y = v_opt[1]
             msg_vel.linear.z = 0
             msg_vel.angular.z = 0
-            self.ov_velocity_pub(msg_vel)
+            self.ov_velocity_pub.publish(msg_vel)
             print("================VELOCITY OUTPUT=================")
             print(v_opt)
             print("================VELOCITY OUTPUT=================")
@@ -109,7 +112,7 @@ class ObstacleAvoidance:
         suitable_v = []
         unsuitable_v = []
         for theta in np.arange(0, 2*math.pi, 0.1):
-            for rad in np.arange(0.02, norm_v+0.02, norm_v/5.0):
+            for rad in np.arange(0.02, norm_v+0.02, norm_v+0.02/5.0):
                 new_v = [rad*math.cos(theta), rad*math.sin(theta)]
                 suit = True
                 for rvo in rvo_all:
@@ -165,38 +168,41 @@ class ObstacleAvoidance:
                 theta_left = math.atan2(left[1], left[0])
 
         else:
-            print('suitable not found')
-            tc_V = dict()
-            for unsuit_v in unsuitable_v:
-                tc_V[tuple(unsuit_v)] = 0
-                tc = []
-                for rvo in rvo_all:
-                    p_0 = rvo[0]
-                    left = rvo[1]
-                    right = rvo[2]
-                    dist = rvo[3]
-                    radius = rvo[4]
-                    dif = [unsuit_v[0] + robot_pos[0] - p_0[0], unsuit_v[1] + robot_pos[1] - p_0[1]]
-                    theta_dif = math.atan2(dif[1], dif[0])
-                    theta_right = math.atan2(right[1], right[0])
-                    theta_left = math.atan2(left[1], left[0])
+            # print('suitable not found')
+            # tc_V = dict()
+            # for unsuit_v in unsuitable_v:
+            #     tc_V[tuple(unsuit_v)] = 0
+            #     tc = []
+            #     for rvo in rvo_all:
+            #         p_0 = rvo[0]
+            #         left = rvo[1]
+            #         right = rvo[2]
+            #         dist = rvo[3]
+            #         radius = rvo[4]
+            #         dif = [unsuit_v[0] + robot_pos[0] - p_0[0], unsuit_v[1] + robot_pos[1] - p_0[1]]
+            #         theta_dif = math.atan2(dif[1], dif[0])
+            #         theta_right = math.atan2(right[1], right[0])
+            #         theta_left = math.atan2(left[1], left[0])
 
-                    if self.inBetween(theta_right, theta_dif, theta_left):
-                        small_theta = abs(theta_dif- 0.5 * (theta_left+theta_right))
-                        if abs(dist*math.sin(small_theta)) >= radius:
-                            radius = abs(dist*math.sin(small_theta))
+            #         if self.inBetween(theta_right, theta_dif, theta_left):
+            #             small_theta = abs(theta_dif- 0.5 * (theta_left+theta_right))
+            #             if abs(dist*math.sin(small_theta)) >= radius:
+            #                 radius = abs(dist*math.sin(small_theta))
                         
-                        big_theta = math.asin(abs(dist*math.sin(small_theta))/radius)
-                        dist_tg = abs(dist*math.cos(small_theta)) - abs(radius*math.cos(big_theta))
+            #             big_theta = math.asin(abs(dist*math.sin(small_theta))/radius)
+            #             dist_tg = abs(dist*math.cos(small_theta)) - abs(radius*math.cos(big_theta))
 
-                        if dist_tg < 0:
-                            dist_tg = 0
-                        tc_v = dist_tg/self.distance(dif, [0.0])
-                        tc.append(tc_v)
+            #             if dist_tg < 0:
+            #                 dist_tg = 0
+                        
+            #             # print("dif = {dif}")
+            #             tc_v = dist_tg/self.distance(dif, [0.0])
+            #             tc.append(tc_v)
                     
-                tc_V[tuple(unsuit_v)] = min(tc) + 0.001
-            WT = 0.2
-            va_post = min(unsuitable_v, key=lambda v: ((WT/tc_V[tuple(v)]) + self.distance(v, robot_vel)))
+            #     tc_V[tuple(unsuit_v)] = min(tc) + 0.001
+            # WT = 0.2
+            # va_post = min(unsuitable_v, key=lambda v: ((WT/tc_V[tuple(v)]) + self.distance(v, robot_vel)))
+            va_post = [0,0]
         return va_post
 
     def inBetween(self, theta_right, theta_dif, theta_left):

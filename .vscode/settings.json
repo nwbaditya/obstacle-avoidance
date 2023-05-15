@@ -1,0 +1,12 @@
+{
+    "python.autoComplete.extraPaths": [
+        "/home/asr-its/slam_ws/devel/lib/python3/dist-packages",
+        "/home/asr-its/robot_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ],
+    "python.analysis.extraPaths": [
+        "/home/asr-its/slam_ws/devel/lib/python3/dist-packages",
+        "/home/asr-its/robot_ws/devel/lib/python3/dist-packages",
+        "/opt/ros/noetic/lib/python3/dist-packages"
+    ]
+}
