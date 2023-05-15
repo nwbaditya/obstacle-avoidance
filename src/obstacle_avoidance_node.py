@@ -4,6 +4,8 @@ import rospy
 import zed_interfaces.msg._ObjectsStamped
 import zed_interfaces.msg._Object
 import geometry_msgs.msg._PoseStamped
+from std_msgs.msg import Bool
+from geometry_msgs.msg import Twist
 
 import math
 import numpy as np
@@ -27,8 +29,12 @@ class ObstacleAvoidance:
     def __init__(self):
         self.robot = Robot(ROBOT_RADIUS)
 
+        self.obstacle_detected_pub = rospy.Publisher("/obstacle_detected",Bool, queue_size=1)
+        self.ov_velocity_pub = rospy.Publisher("/ov_velocity", Twist)
+
         rospy.Subscriber("/zed2i/zed_node/obj_det/objects", zed_interfaces.msg.ObjectsStamped, self.zed_od_callback)
         rospy.Subscriber("/zed2i/zed_node/pose", geometry_msgs.msg.PoseStamped, self.robot_pose_callback)
+        rospy.Subscriber("/pure_pursuit_vel", geometry_msgs.msg.Twist, self.pure_pursuit_callback)
     
     def zed_od_callback(self, object):
 
@@ -36,42 +42,67 @@ class ObstacleAvoidance:
 
         if(len(object.objects) == 0):
             print("No Object Detected")
+            msg_obj = Bool()
+            msg_obj.data = False
+            self.obstacle_detected_pub(msg_obj)
             return
-        
-        for i in range(len(object.objects)):
-            obstacle = Obstacle(object.objects[i].label_id)
-            velocity_obstacle = VelocityObstacle()
-            global obstacles_vis
+        else:
+            for i in range(len(object.objects)):
+                obstacle = Obstacle(object.objects[i].label_id)
+                velocity_obstacle = VelocityObstacle()
+                global obstacles_vis
 
-            obstacle.position[0] = object.objects[i].position[0]
-            obstacle.position[1] = object.objects[i].position[1]
+                obstacle.position[0] = object.objects[i].position[0]
+                obstacle.position[1] = object.objects[i].position[1]
 
-            obstacles_vis.append(obstacle)
+                obstacles_vis.append(obstacle)
 
-            obstacle.velocity[0] = object.objects[i].velocity[0]
-            obstacle.velocity[1] = object.objects[i].velocity[1]
+                obstacle.velocity[0] = object.objects[i].velocity[0]
+                obstacle.velocity[1] = object.objects[i].velocity[1]
 
-            velocity_obstacle.getBoundLeft(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
-            velocity_obstacle.getBoundRight(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
-            velocity_obstacle.getTranslationalVelocity(self.robot.position, obstacle.velocity)
+                velocity_obstacle.getBoundLeft(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
+                velocity_obstacle.getBoundRight(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
+                velocity_obstacle.getTranslationalVelocity(self.robot.position, obstacle.velocity)
+
+                if(velocity_obstacle.euclidean_distance < 1.5):
+                    msg_obj = Bool()
+                    msg_obj.data = True
+                    self.obstacle_detected_pub(msg_obj)
+                else:
+                    return
 
 
-            radius = ROBOT_RADIUS + OBSTACLE_RADIUS
-            rvo = [velocity_obstacle.translational_vel, velocity_obstacle.bound_left,   
-                   velocity_obstacle.bound_right, velocity_obstacle.euclidean_distance, radius]
-            
-            rvo_all.append(rvo)
+                radius = ROBOT_RADIUS + OBSTACLE_RADIUS
+                rvo = [velocity_obstacle.translational_vel, velocity_obstacle.bound_left,   
+                    velocity_obstacle.bound_right, velocity_obstacle.euclidean_distance, radius]
+                
+                rvo_all.append(rvo)
+            v_des = [self.robot.velocity[0],self.robot.velocity[1]]
+            print("================DESIRED VELOCITY=================")
+            print(v_des)
+            print("================DESIRED VELOCITY=================")
 
-        v_des = [1,1]
+            va_post = self.intersect(self.robot.position, v_des, rvo_all)
+            v_opt = va_post
 
-        va_post = self.intersect(self.robot.position, v_des, rvo_all)
-        v_opt = va_post
-        print(v_opt)
+            #Publish
+            msg_vel = Twist()
+            msg_vel.linear.x = v_opt[0]
+            msg_vel.linear.y = v_opt[1]
+            msg_vel.linear.z = 0
+            msg_vel.angular.z = 0
+            self.ov_velocity_pub(msg_vel)
+            print("================VELOCITY OUTPUT=================")
+            print(v_opt)
+            print("================VELOCITY OUTPUT=================")
 
     def robot_pose_callback(self, robot):
         self.robot.position[0] = robot.pose.position.x
         self.robot.position[1] = robot.pose.position.y
 
+    def pure_pursuit_callback(self, msg):
+        self.robot.velocity[0] = msg.linear.x
+        self.robot.velocity[1] = msg.linear.y
 
     def intersect(self, robot_pos, robot_vel, rvo_all):
         norm_v = self.distance(robot_vel, [0, 0])
