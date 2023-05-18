@@ -18,11 +18,11 @@ from include.visualization import Visualization
 
 import cv2
 
-ROBOT_RADIUS = 0.5
-OBSTACLE_RADIUS = 0.5
+ROBOT_RADIUS = 20 #cm
+OBSTACLE_RADIUS = 10 #cm
 
 
-vis = Visualization()
+vis = Visualization(ROBOT_RADIUS, OBSTACLE_RADIUS)
 obstacles_vis = []
 
 class ObstacleAvoidance:
@@ -53,19 +53,31 @@ class ObstacleAvoidance:
                 global obstacles_vis
 
                 #Convert to Cm
-                obstacle.position[0] = object.objects[i].position[0] * 100
-                obstacle.position[1] = object.objects[i].position[1] * 100
+                obstacle.position[0] = object.objects[i].position[0]*100
+                obstacle.position[1] = object.objects[i].position[1]*100
 
-                obstacles_vis.append(obstacle)
+                # print([obstacle.position[0], obstacle.position[1]])
 
-                obstacle.velocity[0] = object.objects[i].velocity[0] * 100
-                obstacle.velocity[1] = object.objects[i].velocity[1] * 100
+                obstacle.velocity[0] = object.objects[i].velocity[0]*100
+                obstacle.velocity[1] = object.objects[i].velocity[1]*100
+
+
+                # print([obstacle.velocity[0], obstacle.velocity[1]])
+                # obstacles_vis.append(obstacle)
 
                 velocity_obstacle.getBoundLeft(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
                 velocity_obstacle.getBoundRight(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
                 velocity_obstacle.getTranslationalVelocity(self.robot.position, obstacle.velocity)
 
-                if(velocity_obstacle.euclidean_distance < 150):
+
+                if(velocity_obstacle.euclidean_distance < ROBOT_RADIUS + OBSTACLE_RADIUS):
+                    print("ROBOT CRASHED")
+                    continue
+                obs = [obstacle, velocity_obstacle]
+                obstacles_vis.append(obs)
+                # print([velocity_obstacle.bound_left, velocity_obstacle.bound_right])
+
+                if(velocity_obstacle.euclidean_distance < 250):
                     msg_obj = Bool()
                     msg_obj.data = True
                     self.obstacle_detected_pub.publish(msg_obj)
@@ -82,11 +94,12 @@ class ObstacleAvoidance:
                 
                 rvo_all.append(rvo)
             v_des = [self.robot.velocity[0],self.robot.velocity[1]]
-            print("================DESIRED VELOCITY=================")
-            print(v_des)
-            print("================DESIRED VELOCITY=================")
+            # print("================DESIRED VELOCITY=================")
+            # print(v_des)
+            # print("================DESIRED VELOCITY=================")
 
-            va_post = self.intersect(self.robot.position, v_des, rvo_all)
+            # va_post = self.intersect(self.robot.position, v_des, rvo_all)
+            va_post = [0,0]
             v_opt = va_post
 
             #Publish
@@ -96,13 +109,13 @@ class ObstacleAvoidance:
             msg_vel.linear.z = 0
             msg_vel.angular.z = 0
             self.ov_velocity_pub.publish(msg_vel)
-            print("================VELOCITY OUTPUT=================")
-            print(v_opt)
-            print("================VELOCITY OUTPUT=================")
+            # print("================VELOCITY OUTPUT=================")
+            # print(v_opt)
+            # print("================VELOCITY OUTPUT=================")
 
     def robot_pose_callback(self, robot):
-        self.robot.position[0] = robot.pose.position.x * 100
-        self.robot.position[1] = robot.pose.position.y * 100
+        self.robot.position[0] = robot.pose.position.x
+        self.robot.position[1] = robot.pose.position.y
 
     def pure_pursuit_callback(self, msg):
         self.robot.velocity[0] = msg.linear.x
@@ -112,9 +125,9 @@ class ObstacleAvoidance:
         norm_v = self.distance(robot_vel, [0, 0])
         suitable_v = []
         unsuitable_v = []
-        for theta in np.arange(0, 2*math.pi, 0.1):
-            for rad in np.arange(0.02, norm_v+0.02, norm_v+0.02/5.0):
-                new_v = [rad*math.cos(theta), rad*math.sin(theta)]
+        for theta in np.arange(-math.pi, math.pi, 0.1):
+            for speed in np.arange(1, 20, 1):
+                new_v = [speed*math.cos(theta), speed*math.sin(theta)]
                 suit = True
                 for rvo in rvo_all:
                     p_0 = rvo[0]
@@ -154,10 +167,10 @@ class ObstacleAvoidance:
             unsuitable_v.append(new_v)
 
         if suitable_v:
-            print('suitable found')
+            # print('suitable found')
             # print(suitable_v)
             va_post = min(suitable_v, key= lambda v: self.distance(v, robot_vel))
-            print(va_post)
+            # print(va_post)
             new_v = va_post[:]
             for rvo in rvo_all:
                 p_0 = rvo[0]
