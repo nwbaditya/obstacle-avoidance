@@ -51,3 +51,40 @@ class VelocityObstacle:
         self.translational_vel[0] = robot_pos[0] + obstacle_vel[0]
         self.translational_vel[1] = robot_pos[1] + obstacle_vel[1]
 
+    def getCollisionCone(self, robot_pos, robot_vel, obstacle_pos, obstacle_vel, safety_dist):
+        self.getRelativePosition(robot_pos, obstacle_pos)
+        self.getRelativeVelocity(robot_vel, obstacle_vel)
+
+        ttc = -np.dot(self.relative_pos, self.relative_pos) / np.dot(self.relative_pos, self.relative_vel)
+        if ttc < 0:
+            return None
+        
+        print(ttc)
+        angle = np.arctan2(self.relative_vel[1], self.relative_vel[1])
+        half_angle = np.arcsin(safety_dist / np.linalg.norm(self.relative_pos))
+        left_angle = angle - half_angle
+        right_angle = angle + half_angle
+
+        return left_angle, right_angle
+    
+    def getVelocityObstacle(self, collision_cone):
+        velocity_obstacle = []
+
+        left_angle, right_angle = collision_cone
+        angles = np.arange(left_angle, right_angle, 0.1)
+        
+        for angle in angles:
+            for speed in np.arange(0, 20, 1):
+                velocity = [speed*math.cos(angle), speed*math.sin(angle)]
+                velocity_obstacle.append(velocity)
+
+        return velocity_obstacle
+
+    def getReachableVelocity(self, max_speed):
+        reachable_velocities =[]
+        for angle in np.arange(-np.pi, np.pi, 0.1):
+            for speed in np.arange(0, max_speed, 1):
+                velocity = [round(speed*math.cos(angle)), round(speed*math.sin(angle))]
+                reachable_velocities.append(velocity)
+                
+        return reachable_velocities

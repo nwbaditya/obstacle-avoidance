@@ -21,6 +21,10 @@ import cv2
 ROBOT_RADIUS = 20 #cm
 OBSTACLE_RADIUS = 10 #cm
 
+ROBOT_MAX_SPEED = 20
+
+current_v = [5,0]
+
 
 vis = Visualization(ROBOT_RADIUS, OBSTACLE_RADIUS)
 obstacles_vis = []
@@ -37,8 +41,8 @@ class ObstacleAvoidance:
         rospy.Subscriber("/pure_pursuit_vel", geometry_msgs.msg.Twist, self.pure_pursuit_callback)
     
     def zed_od_callback(self, object):
-
-        rvo_all = []
+        global current_v
+        vo_all = []
 
         if(len(object.objects) == 0):
             print("No Object Detected")
@@ -47,6 +51,8 @@ class ObstacleAvoidance:
             self.obstacle_detected_pub.publish(msg_obj)
             return
         else:
+            self.robot.velocity = current_v
+            self.robot.desired_velocity = current_v
             for i in range(len(object.objects)):
                 obstacle = Obstacle(object.objects[i].label_id)
                 velocity_obstacle = VelocityObstacle()
@@ -61,192 +67,159 @@ class ObstacleAvoidance:
                 obstacle.velocity[0] = object.objects[i].velocity[0]*100
                 obstacle.velocity[1] = object.objects[i].velocity[1]*100
 
-
-                # print([obstacle.velocity[0], obstacle.velocity[1]])
-                # obstacles_vis.append(obstacle)
-
                 velocity_obstacle.getBoundLeft(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
                 velocity_obstacle.getBoundRight(self.robot.position, obstacle.position, ROBOT_RADIUS, OBSTACLE_RADIUS)
-                velocity_obstacle.getTranslationalVelocity(self.robot.position, obstacle.velocity)
-
+                velocity_obstacle.getRelativeVelocity(self.robot.velocity, [0,0])
+                # velocity_obstacle.getTranslationalVelocity(self.robot.position, obstacle.velocity)
+                velocity_obstacle.getTranslationalVelocity(self.robot.position, velocity_obstacle.relative_vel)
 
                 if(velocity_obstacle.euclidean_distance < ROBOT_RADIUS + OBSTACLE_RADIUS):
                     print("ROBOT CRASHED")
                     continue
+                
                 obs = [obstacle, velocity_obstacle]
                 obstacles_vis.append(obs)
+                safe_radius = ROBOT_RADIUS + OBSTACLE_RADIUS + 10
+                vo = [velocity_obstacle.translational_vel,
+                      velocity_obstacle.bound_left,
+                      velocity_obstacle.bound_right,
+                      velocity_obstacle.euclidean_distance,
+                      safe_radius
+                      ]
+                
+                vo_all.append(vo)
                 # print([velocity_obstacle.bound_left, velocity_obstacle.bound_right])
 
-                if(velocity_obstacle.euclidean_distance < 250):
-                    msg_obj = Bool()
-                    msg_obj.data = True
-                    self.obstacle_detected_pub.publish(msg_obj)
-                else:
-                    msg_obj = Bool()
-                    msg_obj.data = False
-                    self.obstacle_detected_pub.publish(msg_obj)
-                    return
-
-
-                radius = ROBOT_RADIUS + OBSTACLE_RADIUS
-                rvo = [velocity_obstacle.translational_vel, velocity_obstacle.bound_left,   
-                    velocity_obstacle.bound_right, velocity_obstacle.euclidean_distance, radius]
+                # if(velocity_obstacle.euclidean_distance < 250):
+                #     msg_obj = Bool()
+                #     msg_obj.data = True
+                #     self.obstacle_detected_pub.publish(msg_obj)
+                # else:
+                #     msg_obj = Bool()
+                #     msg_obj.data = False
+                #     self.obstacle_detected_pub.publish(msg_obj)
+                #     return
+            
+            robot_vel_post = self.intersect(self.robot.position, self.robot.desired_velocity, vo_all)
+            print(robot_vel_post)
                 
-                rvo_all.append(rvo)
-            v_des = [self.robot.velocity[0],self.robot.velocity[1]]
-            # print("================DESIRED VELOCITY=================")
-            # print(v_des)
-            # print("================DESIRED VELOCITY=================")
-
-            # va_post = self.intersect(self.robot.position, v_des, rvo_all)
-            va_post = [0,0]
-            v_opt = va_post
 
             #Publish
-            msg_vel = Twist()
-            msg_vel.linear.x = v_opt[0]
-            msg_vel.linear.y = v_opt[1]
-            msg_vel.linear.z = 0
-            msg_vel.angular.z = 0
-            self.ov_velocity_pub.publish(msg_vel)
+            # msg_vel = Twist()
+            # msg_vel.linear.x = v_opt[0]
+            # msg_vel.linear.y = v_opt[1]
+            # msg_vel.linear.z = 0
+            # msg_vel.angular.z = 0
+            # self.ov_velocity_pub.publish(msg_vel)
             # print("================VELOCITY OUTPUT=================")
             # print(v_opt)
             # print("================VELOCITY OUTPUT=================")
-
-    def robot_pose_callback(self, robot):
-        self.robot.position[0] = robot.pose.position.x
-        self.robot.position[1] = robot.pose.position.y
-
-    def pure_pursuit_callback(self, msg):
-        self.robot.velocity[0] = msg.linear.x
-        self.robot.velocity[1] = msg.linear.y
-
-    def intersect(self, robot_pos, robot_vel, rvo_all):
-        norm_v = self.distance(robot_vel, [0, 0])
+    def intersect(self, robot_pose, robot_desired_vel, vo_all):
         suitable_v = []
         unsuitable_v = []
-        for theta in np.arange(-math.pi, math.pi, 0.1):
-            for speed in np.arange(1, 20, 1):
-                new_v = [speed*math.cos(theta), speed*math.sin(theta)]
+
+        for theta in np.arange(-np.pi, np.pi, 0.1):
+            for speed in np.arange(0, ROBOT_MAX_SPEED, 1):
+                new_v = [round(speed*np.cos(theta)), round(speed*np.sin(theta))]
+                # print(new_v)
                 suit = True
-                for rvo in rvo_all:
-                    p_0 = rvo[0]
-                    left = rvo[1]
-                    right = rvo[2]
-                    dif = [new_v[0]+robot_pos[0]-p_0[0], new_v[1]+robot_pos[1]-p_0[1]]
-                    theta_dif = math.atan2(dif[1], dif[0])
-                    theta_right = math.atan2(right[1], right[0])
-                    theta_left = math.atan2(left[1], left[0])
-                    if self.inBetween(theta_right, theta_dif, theta_left):
+                for vo in vo_all:
+                    p0 = vo[0]
+                    bound_left = vo[1]
+                    bound_right = vo[2]
+                    dif = [new_v[0] + robot_pose[0] - p0[0], new_v[1] + robot_pose[1] - p0[1]]
+                    theta_dif = np.arctan2(dif[1], dif[0])
+                    theta_left = np.arctan2(bound_left[1], bound_left[0])
+                    theta_right = np.arctan2(bound_right[1], bound_right[0])
+
+                    if self.inBetween(theta_left, theta_dif, theta_right):
                         suit = False
                         break
-                if suit:
-                    suitable_v.append(new_v)
-                else:
-                    unsuitable_v.append(new_v)   
 
-
-        new_v = robot_vel[:]
-        suit = True
-        for rvo in rvo_all:
-            p_0 = rvo[0]
-            left = rvo[1]
-            right = rvo[2]
-            dif = [new_v[0] + robot_pos[0] - p_0[0], new_v[1] + robot_pos[1] - p_0[1]]
-            theta_dif = math.atan2(dif[1], dif[0])
-            theta_right = math.atan2(right[1], right[0])
-            theta_left = math.atan2(left[1], left[0])
-
-            if self.inBetween(theta_right, theta_dif, theta_left):
-                suit = False
-                break
+                    if suit:
+                        suitable_v.append(new_v)
+                    else:
+                        unsuitable_v.append(new_v)
         
-        if suit:
-            suitable_v.append(new_v)
-        else:
-            unsuitable_v.append(new_v)
-
         if suitable_v:
-            # print('suitable found')
-            # print(suitable_v)
-            va_post = min(suitable_v, key= lambda v: self.distance(v, robot_vel))
-            # print(va_post)
-            new_v = va_post[:]
-            for rvo in rvo_all:
-                p_0 = rvo[0]
-                left = rvo[1]
-                right = rvo[2]
-                dif = [new_v[0]+robot_pos[0]-p_0[0], new_v[1]+robot_pos[1]-p_0[1]]
-                theta_dif = math.atan2(dif[1], dif[0])
-                theta_right = math.atan2(right[1], right[0])
-                theta_left = math.atan2(left[1], left[0])
-
+            robot_vel_post = min(suitable_v, key= lambda v: self.distance(v, robot_desired_vel))
+        
         else:
-            # print('suitable not found')
-            # tc_V = dict()
-            # for unsuit_v in unsuitable_v:
-            #     tc_V[tuple(unsuit_v)] = 0
-            #     tc = []
-            #     for rvo in rvo_all:
-            #         p_0 = rvo[0]
-            #         left = rvo[1]
-            #         right = rvo[2]
-            #         dist = rvo[3]
-            #         radius = rvo[4]
-            #         dif = [unsuit_v[0] + robot_pos[0] - p_0[0], unsuit_v[1] + robot_pos[1] - p_0[1]]
-            #         theta_dif = math.atan2(dif[1], dif[0])
-            #         theta_right = math.atan2(right[1], right[0])
-            #         theta_left = math.atan2(left[1], left[0])
+            robot_vel_post = [0,0]
+            tc_v = dict()
+            for v in unsuitable_v:
+                tc_v[tuple(v)] = 0
+                tc = []
+                for vo in vo_all:
+                    p0 = vo[0]
+                    bound_left = vo[1]
+                    bound_right = vo[2]
+                    dist = vo[3]
+                    radius = vo[4]
+                    dif = [v[0] + robot_pose[0] - p0[0], v[1] + robot_pose[1] - p0[1]]
+                    theta_dif = np.arctan2(dif[1], dif[0])
+                    theta_left = np.arctan2(bound_left[1], bound_left[0])
+                    theta_right = np.arctan2(bound_right[1], bound_right[0])
 
-            #         if self.inBetween(theta_right, theta_dif, theta_left):
-            #             small_theta = abs(theta_dif- 0.5 * (theta_left+theta_right))
-            #             if abs(dist*math.sin(small_theta)) >= radius:
-            #                 radius = abs(dist*math.sin(small_theta))
+                    if self.inBetween(theta_left, theta_dif, theta_right):
+                        small_theta = abs(theta_dif-0.5*(theta_left + theta_right))
+                        if abs(dist*np.sin(small_theta)) >= radius:
+                            radius = abs(dist*np.sin(small_theta))
+
+                        big_theta = np.arcsin(abs(dist*np.sin(small_theta))/radius)
+                        dist_tg = abs(dist*np.cos(small_theta)) - abs(radius*np.cos(big_theta))
+
+                        if(dist_tg) < 0:
+                            dist_tg = 0
                         
-            #             big_theta = math.asin(abs(dist*math.sin(small_theta))/radius)
-            #             dist_tg = abs(dist*math.cos(small_theta)) - abs(radius*math.cos(big_theta))
+                        v_tc = dist_tg/np.linalg.norm(dif, [0,0])
+                        tc.append(v_tc)
+                tc_v[tuple(v)] = min(tc) + 0.001
+                WT = 0.2
+                robot_vel_post = min(unsuitable_v, key=lambda v: ((WT/tc_v[tuple(v)]) + self.distance(v, robot_desired_vel)))
+        return robot_vel_post
 
-            #             if dist_tg < 0:
-            #                 dist_tg = 0
-                        
-            #             # print("dif = {dif}")
-            #             tc_v = dist_tg/self.distance(dif, [0.0])
-            #             tc.append(tc_v)
-                    
-            #     tc_V[tuple(unsuit_v)] = min(tc) + 0.001
-            # WT = 0.2
-            # va_post = min(unsuitable_v, key=lambda v: ((WT/tc_V[tuple(v)]) + self.distance(v, robot_vel)))
-            va_post = [0,0]
-        return va_post
-
-    def inBetween(self, theta_right, theta_dif, theta_left):
-        if abs(theta_right - theta_left) <= math.pi:
-            # print(theta_left, theta_dif, theta_right)
-            if theta_right <= theta_dif <= theta_left:
+    def inBetween(self, theta_left, theta_dif, theta_right):
+        if abs(theta_right - theta_left) <= np.pi:
+            if theta_left >= theta_dif >= theta_right:
                 return True
             else:
                 return False
+        
         else:
-            if (theta_left <0) and (theta_right >0):
-                theta_left += 2*math.pi
-                if theta_dif < 0:
-                    theta_dif += 2*math.pi
-                if theta_right <= theta_dif <= theta_left:
+            if(theta_left < 0 and theta_right > 0):
+                theta_left+=2*np.pi
+                if(theta_dif < 0):
+                    theta_dif+=2*np.pi
+                if(theta_left >= theta_dif >= theta_right):
+                    return True
+                else: 
+                    return False   
+            
+            if(theta_left < theta_right):
+                theta_right-=2*np.pi
+                theta_dif-=2*np.pi
+
+                if(theta_left >= theta_dif >= theta_right):
                     return True
                 else:
                     return False
-        if (theta_left >0) and (theta_right <0):
-            theta_right += 2*math.pi
-            if theta_dif < 0:
-                theta_dif += 2*math.pi
-            if theta_left <= theta_dif <= theta_right:
-                return True
-            else:
-                return False
-        
-    def distance(self, pose1, pose2):
-        return math.sqrt((pose1[0]-pose2[0])**2 + (pose1[1]-pose2[1])**2)
+    
 
+    def distance(self,pose1, pose2):
+        """ compute Euclidean distance for 2D """
+        return math.sqrt((pose1[0]-pose2[0])**2+(pose1[1]-pose2[1])**2)+0.001
+                
+
+
+    def robot_pose_callback(self, robot):
+        self.robot.position[0] = 0
+        self.robot.position[1] = 0
+
+    def pure_pursuit_callback(self, msg):
+        self.robot.desired_velocity[0] = msg.linear.x
+        self.robot.desired_velocity[1] = msg.linear.y
+    
 def visualization_thread():
     rate = rospy.Rate(10)
     while not rospy.is_shutdown():
