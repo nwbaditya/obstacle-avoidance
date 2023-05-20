@@ -18,16 +18,22 @@ from include.visualization import Visualization
 
 import cv2
 
-ROBOT_RADIUS = 20 #cm
-OBSTACLE_RADIUS = 10 #cm
+ROBOT_RADIUS = 30 #cm
+OBSTACLE_RADIUS = 20 #cm
 
 ROBOT_MAX_SPEED = 20
 
 current_v = [5,0]
+desired_v = [10,-10]
 
 
 vis = Visualization(ROBOT_RADIUS, OBSTACLE_RADIUS)
 obstacles_vis = []
+suitable_v_vis = []
+unsuitable_v_vis = []
+robot_vel_opt_vis = [0,0]
+robot_vel_des_vis = [0,0]
+
 
 class ObstacleAvoidance:
     def __init__(self):
@@ -36,12 +42,19 @@ class ObstacleAvoidance:
         self.obstacle_detected_pub = rospy.Publisher("/obstacle_detected",Bool, queue_size=1)
         self.ov_velocity_pub = rospy.Publisher("/obs_vel", Twist, queue_size=1)
 
+        self.main_worker = threading.Thread(target=self.main_thread).start()
+
         rospy.Subscriber("/zed2i/zed_node/obj_det/objects", zed_interfaces.msg.ObjectsStamped, self.zed_od_callback)
         rospy.Subscriber("/zed2i/zed_node/pose", geometry_msgs.msg.PoseStamped, self.robot_pose_callback)
         rospy.Subscriber("/pure_pursuit_vel", geometry_msgs.msg.Twist, self.pure_pursuit_callback)
     
     def zed_od_callback(self, object):
         global current_v
+        global suitable_v_vis
+        global unsuitable_v_vis
+        global robot_vel_opt_vis
+        global robot_vel_des_vis
+        
         vo_all = []
 
         if(len(object.objects) == 0):
@@ -52,7 +65,7 @@ class ObstacleAvoidance:
             return
         else:
             self.robot.velocity = current_v
-            self.robot.desired_velocity = current_v
+            self.robot.desired_velocity = desired_v
             for i in range(len(object.objects)):
                 obstacle = Obstacle(object.objects[i].label_id)
                 velocity_obstacle = VelocityObstacle()
@@ -75,7 +88,7 @@ class ObstacleAvoidance:
 
                 if(velocity_obstacle.euclidean_distance < ROBOT_RADIUS + OBSTACLE_RADIUS):
                     print("ROBOT CRASHED")
-                    continue
+                    # continue
                 
                 obs = [obstacle, velocity_obstacle]
                 obstacles_vis.append(obs)
@@ -90,35 +103,41 @@ class ObstacleAvoidance:
                 vo_all.append(vo)
                 # print([velocity_obstacle.bound_left, velocity_obstacle.bound_right])
 
-                # if(velocity_obstacle.euclidean_distance < 250):
-                #     msg_obj = Bool()
-                #     msg_obj.data = True
-                #     self.obstacle_detected_pub.publish(msg_obj)
-                # else:
-                #     msg_obj = Bool()
-                #     msg_obj.data = False
-                #     self.obstacle_detected_pub.publish(msg_obj)
-                #     return
+                if(velocity_obstacle.euclidean_distance < 200):
+                    msg_obj = Bool()
+                    msg_obj.data = True
+                    self.obstacle_detected_pub.publish(msg_obj)
+                else:
+                    msg_obj = Bool()
+                    msg_obj.data = False
+                    self.obstacle_detected_pub.publish(msg_obj)
+                    # return
             
             robot_vel_post = self.intersect(self.robot.position, self.robot.desired_velocity, vo_all)
+            robot_vel_opt_vis = robot_vel_post
+            robot_vel_des_vis = self.robot.desired_velocity
             print(robot_vel_post)
                 
 
             #Publish
-            # msg_vel = Twist()
-            # msg_vel.linear.x = v_opt[0]
-            # msg_vel.linear.y = v_opt[1]
-            # msg_vel.linear.z = 0
-            # msg_vel.angular.z = 0
-            # self.ov_velocity_pub.publish(msg_vel)
-            # print("================VELOCITY OUTPUT=================")
-            # print(v_opt)
-            # print("================VELOCITY OUTPUT=================")
+            msg_vel = Twist()
+            msg_vel.linear.x = robot_vel_post[0]
+            msg_vel.linear.y = robot_vel_post[1]
+            msg_vel.linear.z = 0
+            msg_vel.angular.z = 0
+            self.ov_velocity_pub.publish(msg_vel)
+            print("================VELOCITY OUTPUT=================")
+            print(robot_vel_post)
+            print("================VELOCITY OUTPUT=================")
+
     def intersect(self, robot_pose, robot_desired_vel, vo_all):
         suitable_v = []
         unsuitable_v = []
 
-        for theta in np.arange(-np.pi, np.pi, 0.1):
+        global suitable_v_vis
+        global unsuitable_v_vis
+
+        for theta in np.arange(-np.pi, np.pi, 0.05):
             for speed in np.arange(0, ROBOT_MAX_SPEED, 1):
                 new_v = [round(speed*np.cos(theta)), round(speed*np.sin(theta))]
                 # print(new_v)
@@ -134,18 +153,18 @@ class ObstacleAvoidance:
 
                     if self.inBetween(theta_left, theta_dif, theta_right):
                         suit = False
-                        break
 
                     if suit:
                         suitable_v.append(new_v)
                     else:
                         unsuitable_v.append(new_v)
         
+
         if suitable_v:
             robot_vel_post = min(suitable_v, key= lambda v: self.distance(v, robot_desired_vel))
         
         else:
-            robot_vel_post = [0,0]
+            print('unsuitable_v')
             tc_v = dict()
             for v in unsuitable_v:
                 tc_v[tuple(v)] = 0
@@ -177,6 +196,9 @@ class ObstacleAvoidance:
                 tc_v[tuple(v)] = min(tc) + 0.001
                 WT = 0.2
                 robot_vel_post = min(unsuitable_v, key=lambda v: ((WT/tc_v[tuple(v)]) + self.distance(v, robot_desired_vel)))
+        
+        suitable_v_vis = suitable_v[:]
+        unsuitable_v_vis = unsuitable_v[:]
         return robot_vel_post
 
     def inBetween(self, theta_left, theta_dif, theta_right):
@@ -209,8 +231,6 @@ class ObstacleAvoidance:
     def distance(self,pose1, pose2):
         """ compute Euclidean distance for 2D """
         return math.sqrt((pose1[0]-pose2[0])**2+(pose1[1]-pose2[1])**2)+0.001
-                
-
 
     def robot_pose_callback(self, robot):
         self.robot.position[0] = 0
@@ -219,19 +239,43 @@ class ObstacleAvoidance:
     def pure_pursuit_callback(self, msg):
         self.robot.desired_velocity[0] = msg.linear.x
         self.robot.desired_velocity[1] = msg.linear.y
-    
+
+    def main_thread(self):
+        rate = rospy.Rate(20)
+        while not rospy.is_shutdown():
+            print("THIS IS WORKER THREAD")
+            rate.sleep()
+
 def visualization_thread():
-    rate = rospy.Rate(10)
+    rate = rospy.Rate(5)
     while not rospy.is_shutdown():
         global obstacles_vis
-        vis.showVelocityObstacleFrame(obstacles_vis)
+        global suitable_v_vis
+        global unsuitable_v_vis
+        global robot_vel_opt_vis
+        global robot_vel_des_vis
+
+        # vis.showVelocityObstacleFrame(obstacles_vis)
+        print(robot_vel_des_vis)
+        vis.showVelocityObstacleFrame(
+            suitable_v=suitable_v_vis,
+            unsuitable_v= unsuitable_v_vis, 
+            obstacles=obstacles_vis, 
+            robot_vel_des = robot_vel_des_vis,
+            robot_vel_opt= robot_vel_opt_vis)
+        
         obstacles_vis = []
+        suitable_v_vis = []
+        unsuitable_v_vis = []
+        robot_vel_opt_vis = [0,0]
         rate.sleep()
 
 if __name__ == '__main__':
     rospy.init_node('obstacle_avoidance_node_py')
     node = ObstacleAvoidance()
 
-    worker = threading.Thread(target=visualization_thread)
-    worker.start()
+    # main_worker = threading.Thread(target= main_thread)
+    vis_worker = threading.Thread(target=visualization_thread)
+    vis_worker.start()
+    # main_worker.start()
     rospy.spin()
