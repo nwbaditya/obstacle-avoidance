@@ -5,20 +5,21 @@ import math
 
 class Visualization():
     def __init__(self, robot_radius, obstacle_radius, robot_max_speed):
-        self.img_size = (800,800)
+        self.img_size = (500,500)
         self.img_vo = np.zeros((self.img_size[1], self.img_size[0], 3), dtype=np.uint8)
         self.img_cc = np.zeros((self.img_size[1], self.img_size[0], 3), dtype=np.uint8)
         self.bg_color = (255, 255, 255)
         self.img_vo[:] = self.bg_color
         self.img_cc[:] = self.bg_color
-        self.max_obs_distance = robot_max_speed + 5
+        self.max_speed = robot_max_speed+ 5
+        self.max_obs_distance = 200
         self.robot_radius = robot_radius
         self.obstacle_radius = obstacle_radius
         self.robot_radius_px = self.robot_radius/self.max_obs_distance/2*self.img_size[0]
         self.obstacle_radius_px = int(self.obstacle_radius/self.max_obs_distance/2*self.img_size[0])
         self.robot_pos= (int(self.img_size[1]/2), int(self.img_size[0]/2))
         self.obstacle_vel =[0, 0]
-        self.origin = [int(self.img_size[0]/2), int(self.img_size[1]/2)]
+        self.origin = (int(self.img_size[1]/2), int(self.img_size[0]/2))
         self.cached_vo_pts = np.zeros((self.img_size[1], self.img_size[0], 3), dtype=np.uint8)
         self.cached_vo_pts[:] = self.bg_color
 
@@ -47,25 +48,25 @@ class Visualization():
 
         if suitable_v:
             for v in suitable_v:
-                vx = self.origin[0] - int(v[0]/self.max_obs_distance*self.img_size[0]/2)
-                vy = self.origin[1] - int(v[1]/self.max_obs_distance*self.img_size[1]/2)
+                vx = self.origin[0] - int(v[0]/self.max_speed*self.img_size[0]/2)
+                vy = self.origin[1] - int(v[1]/self.max_speed*self.img_size[1]/2)
 
                 cv2.circle(self.cached_vo_pts, (int(vy), int(vx)), 2, (0,255,0), -1)
 
         if unsuitable_v:
             for v in unsuitable_v:
-                vx = self.origin[0] - int(v[0]/self.max_obs_distance*self.img_size[0]/2)
-                vy = self.origin[1] - int(v[1]/self.max_obs_distance*self.img_size[1]/2)
+                vx = self.origin[0] - int(v[0]/self.max_speed*self.img_size[0]/2)
+                vy = self.origin[1] - int(v[1]/self.max_speed*self.img_size[1]/2)
 
                 cv2.circle(self.cached_vo_pts, (int(vy), int(vx)), 2, (0,0,255), -1)
 
-        vx_opt = self.robot_pos[0] - int(robot_vel_opt[0]/self.max_obs_distance*self.img_size[0]/2)
-        vy_opt = self.robot_pos[1] - int(robot_vel_opt[1]/self.max_obs_distance*self.img_size[1]/2)
-        robot_vel_opt_px = [vy_opt, vx_opt]
+        vx_opt = self.origin[0] - int(robot_vel_opt[0]/self.max_speed*self.img_size[0]/2)
+        vy_opt = self.origin[1] - int(robot_vel_opt[1]/self.max_speed*self.img_size[1]/2)
+        robot_vel_opt_px = (vy_opt, vx_opt)
 
-        vx_des = self.origin[0] - int(robot_vel_des[0]/self.max_obs_distance*self.img_size[0]/2)
-        vy_des = self.origin[1] - int(robot_vel_des[1]/self.max_obs_distance*self.img_size[1]/2)
-        robot_vel_des_px = [vy_des, vx_des]
+        vx_des = self.origin[0] - int(robot_vel_des[0]/self.max_speed*self.img_size[0]/2)
+        vy_des = self.origin[1] - int(robot_vel_des[1]/self.max_speed*self.img_size[1]/2)
+        robot_vel_des_px = (vy_des, vx_des)
 
         self.img_vo[:] = self.cached_vo_pts
 

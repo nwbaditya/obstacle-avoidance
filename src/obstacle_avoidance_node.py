@@ -6,6 +6,7 @@ import zed_interfaces.msg._Object
 import geometry_msgs.msg._PoseStamped
 from std_msgs.msg import Bool
 from geometry_msgs.msg import Twist
+from main_controller.msg import ControllerData
 
 import math
 import numpy as np
@@ -43,11 +44,13 @@ class ObstacleAvoidance:
 
         self.obstacle_detected_pub = rospy.Publisher("/obstacle_detected",Bool, queue_size=1)
         self.ov_velocity_pub = rospy.Publisher("/obs_vel", Twist, queue_size=1)
+        self.crashed_pub = rospy.Publisher("/crashed", Bool, queue_size=1)
 
         rospy.Subscriber("/zed2i/zed_node/obj_det/objects", zed_interfaces.msg.ObjectsStamped, self.zed_od_callback)
         rospy.Subscriber("/zed2i/zed_node/pose", geometry_msgs.msg.PoseStamped, self.robot_pose_callback)
         rospy.Subscriber("/pure_pursuit_vel", geometry_msgs.msg.Twist, self.pure_pursuit_callback)
-    
+        rospy.Subscriber("/robot/cmd_vel", ControllerData, self.cmd_vel_callback)
+
     def zed_od_callback(self, object):
         global current_v
         global suitable_v_vis
@@ -64,16 +67,13 @@ class ObstacleAvoidance:
             msg_obj = Bool()
             msg_obj.data = False
             self.obstacle_detected_pub.publish(msg_obj)
-            for theta in np.arange(-np.pi, np.pi, 0.05):
+            for theta in np.arange(-np.pi, np.pi, 0.1):
                 for speed in np.arange(0, ROBOT_MAX_SPEED, 1):
                     new_v = [round(speed*np.cos(theta)), round(speed*np.sin(theta))]
                     suitable_v_vis.append(new_v)
-
-
-            return
         else:
-            self.robot.velocity = current_v
-            self.robot.desired_velocity = desired_v
+            # self.robot.velocity = current_v
+            # self.robot.desired_velocity = desired_v
             for i in range(len(object.objects)):
                 obstacle = Obstacle(object.objects[i].label_id)
                 velocity_obstacle = VelocityObstacle()
@@ -94,6 +94,13 @@ class ObstacleAvoidance:
 
                 if(velocity_obstacle.euclidean_distance < ROBOT_RADIUS + OBSTACLE_RADIUS):
                     print("ROBOT CRASHED")
+                    msg_crashed = Bool()
+                    msg_crashed.data = True
+                    self.crashed_pub.publish(msg_crashed)
+                else:
+                    msg_crashed = Bool()
+                    msg_crashed.data = False
+                    self.crashed_pub.publish(msg_crashed)
 
                 obs = [obstacle, velocity_obstacle]
                 obstacles_vis.append(obs)
@@ -119,8 +126,7 @@ class ObstacleAvoidance:
             
             self.robot_opt_vel = self.intersect(self.robot.position, self.robot.desired_velocity, vo_all)
             robot_vel_opt_vis = self.robot_opt_vel
-            robot_vel_des_vis = self.robot.desired_velocity
-                
+            print(robot_vel_des_vis)
             #Publish
             msg_vel = Twist()
             msg_vel.linear.x = self.robot_opt_vel[0]
@@ -128,6 +134,9 @@ class ObstacleAvoidance:
             msg_vel.linear.z = 0
             msg_vel.angular.z = 0
             self.ov_velocity_pub.publish(msg_vel)
+
+        robot_vel_des_vis = self.robot.desired_velocity
+
 
     def intersect(self, robot_pose, robot_desired_vel, vo_all):
         suitable_v = []
@@ -237,6 +246,12 @@ class ObstacleAvoidance:
     def pure_pursuit_callback(self, msg):
         self.robot.desired_velocity[0] = msg.linear.x
         self.robot.desired_velocity[1] = msg.linear.y
+        # print(self.robot.desired_velocity)
+
+    def cmd_vel_callback(self, msg):
+        self.robot.velocity[0] = msg.data[0]
+        self.robot.velocity[1] = msg.data[1]
+
 
 
 def visualization_thread():
@@ -254,11 +269,13 @@ def visualization_thread():
             obstacles=obstacles_vis, 
             robot_vel_des = robot_vel_des_vis,
             robot_vel_opt= robot_vel_opt_vis)
-        
+        print(robot_vel_des_vis, robot_vel_opt_vis)
+
         obstacles_vis = []
         suitable_v_vis = []
         unsuitable_v_vis = []
         robot_vel_opt_vis = [0,0]
+        robot_vel_des_vis = [0,0]
         rate.sleep()
 
 if __name__ == '__main__':
