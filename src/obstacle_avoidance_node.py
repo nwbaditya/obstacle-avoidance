@@ -19,14 +19,14 @@ from include.visualization import Visualization
 
 import cv2
 
-ROBOT_RADIUS = 30 #cm
-OBSTACLE_RADIUS = 20 #cm
+ROBOT_RADIUS = 40 #cm
+OBSTACLE_RADIUS = 40 #cm
 
 ROBOT_MAX_SPEED = 20
 OBSTACLE_DETECTION_THRESHOLD = 300
 
 current_v = [5,0]
-desired_v = [10,-10]
+desired_v = [10,-2]
 
 
 vis = Visualization(ROBOT_RADIUS, OBSTACLE_RADIUS, ROBOT_MAX_SPEED)
@@ -67,13 +67,13 @@ class ObstacleAvoidance:
             msg_obj = Bool()
             msg_obj.data = False
             self.obstacle_detected_pub.publish(msg_obj)
-            for theta in np.arange(-np.pi, np.pi, 0.1):
+            for theta in np.arange(-np.pi, np.pi, 0.05):
                 for speed in np.arange(0, ROBOT_MAX_SPEED, 1):
                     new_v = [round(speed*np.cos(theta)), round(speed*np.sin(theta))]
                     suitable_v_vis.append(new_v)
         else:
-            # self.robot.velocity = current_v
-            # self.robot.desired_velocity = desired_v
+            self.robot.velocity = current_v
+            self.robot.desired_velocity = desired_v
             for i in range(len(object.objects)):
                 obstacle = Obstacle(object.objects[i].label_id)
                 velocity_obstacle = VelocityObstacle()
@@ -97,6 +97,7 @@ class ObstacleAvoidance:
                     msg_crashed = Bool()
                     msg_crashed.data = True
                     self.crashed_pub.publish(msg_crashed)
+                    break
                 else:
                     msg_crashed = Bool()
                     msg_crashed.data = False
@@ -161,10 +162,10 @@ class ObstacleAvoidance:
                     if self.inBetween(theta_left, theta_dif, theta_right):
                         suit = False
 
-                    if suit:
-                        suitable_v.append(new_v)
-                    else:
-                        unsuitable_v.append(new_v)
+                if suit:
+                    suitable_v.append(new_v)
+                else:
+                    unsuitable_v.append(new_v)
         
 
         if suitable_v:
@@ -255,7 +256,7 @@ class ObstacleAvoidance:
 
 
 def visualization_thread():
-    rate = rospy.Rate(5)
+    rate = rospy.Rate(10)
     while not rospy.is_shutdown():
         global obstacles_vis
         global suitable_v_vis
